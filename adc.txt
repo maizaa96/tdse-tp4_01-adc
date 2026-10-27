@@ -1,0 +1,85 @@
+### 1. Configuración del ADC1 en STM32CubeMX
+
+| Parámetro | Valor Configurado | Significado y Efecto |
+| --- | --- | --- |
+| **Mode** | `Independent mode`
+
+ | El periférico ADC1 opera de manera independiente sin depender de otros ADC (como ADC2 o ADC3).
+
+ |
+| **Data Alignment** | `Right alignment`
+
+ | Justificación a la derecha de los bits convertidos dentro del registro de datos de 16 bits. Es el formato estándar para lectura directa como entero (`uint16_t`).
+
+ |
+| **Scan Conversion Mode** | `Disabled`
+
+ | Se convierte un único canal por cada evento de disparo.
+
+ |
+| **Continuous Conversion Mode** | `Disabled`
+
+ | Modo conversor único ("Single Shot"). Al terminar una conversión, el ADC se detiene hasta recibir una nueva orden manual de inicio.
+
+ |
+| **Discontinuous Conversion Mode** | `Disabled`
+
+ | No se agrupan conversiones en subgrupos.
+
+ |
+| **Enable Regular Conversions** | `Enable`
+
+ | Se habilita el grupo de conversiones regulares.
+
+ |
+| **Number Of Conversion** | `1`
+
+ | La secuencia regular consta de únicamente un canal.
+
+ |
+| **External Trigger Source** | `Regular Conversion launched by software`
+
+ | La conversión no depende de timers externos ni de pines GPIO; debe ser iniciada explícitamente desde código.
+
+ |
+| **Injected Conversions / Watchdog** | `Disable` / Desactivado
+
+ | No hay canales inyectados ni monitoreo analógico por umbrales habilitado.
+
+ |
+
+---
+
+### 2. Funcionamiento con Interrupciones Activas (`app.c`)
+
+En el código fuente proporcionado, el modo de operación mediante **interrupciones** corresponde específicamente a la prueba **`TEST_3`**:
+
+* **Habilitación en NVIC:** En la función `app_init()`, se configura la prioridad de la interrupción compartida del ADC en el vector NVIC mediante `HAL_NVIC_SetPriority(ADC1_2_IRQn, 2, 0)` y se activa con `HAL_NVIC_EnableIRQ(ADC1_2_IRQn)`.
+
+
+* **Disparo por Software (`Start_IT`):** Debido a que la conversión continua está en `Disabled` en la GUI, cada conversión individual debe ser disparada por código mediante la función `HAL_ADC_Start_IT(&hadc1)` dentro de `test3_tick()`.
+
+
+* **Atención por Callback:** Al finalizar cada conversión analógica a digital, el hardware genera una interrupción que ejecuta el callback de la librería HAL `HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)`:
+
+
+* En esta función se guarda la lectura directamente en el arreglo `sample_array` mediante `HAL_ADC_GetValue(&hadc1)`.
+
+
+* Se incrementa el índice `sample_idx`.
+
+
+* Si aún no se alcanza el límite de 100 muestras (`SAMPLES_COUNTER`), activa la bandera `b_trig_new_conversion = true` para solicitar que en el siguiente ciclo principal se dispare la siguiente conversión.
+
+
+
+
+
+---
+
+### 3. Puntos Clave de la Integración
+
+* **Relación Modo Único e Interrupción:** Dado que *Continuous Conversion Mode* está deshabilitado (`Disabled`), la interrupción salta exactamente **una vez por cada disparo manual** realizado con `HAL_ADC_Start_IT()`.
+
+
+* **Diferencia con TEST_1 y TEST_2:** Los modos `TEST_1` y `TEST_2` no emplean interrupciones; utilizan sondeo/bloqueante a través de `HAL_ADC_PollForConversion()` mediante la función `ADC_Poll_Read()`. `TEST_3` libera a la CPU de esperar en bucles bloqueantes de lectura.
